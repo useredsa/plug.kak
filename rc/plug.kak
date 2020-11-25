@@ -10,6 +10,7 @@ provide-module plug %{
   declare-option -docstring 'plug kakrc path' str plug_kakrc_path "%val{config}/kakrc"
   declare-option -docstring 'plug core path' str plug_core_path "%val{runtime}/autoload"
   declare-option -docstring 'plug autoload path' str plug_autoload_path "%val{config}/autoload/plugins"
+  declare-option -docstring 'plug theme path' str plug_theme_path "%val{config}/colors/plugins"
   declare-option -docstring 'plug install path' str plug_install_path "%opt{plug_xdg_data_home_path}/kak/plug/plugins"
 
   # Hooks
@@ -35,7 +36,7 @@ provide-module plug %{
   # https://github.com/mawww/kakoune/blob/master/rc/filetype/kakrc.kak
   hook global ModuleLoaded kak %{
     # Highlight all plug-based commands
-    add-highlighter shared/kakrc/code/plug-keywords regex '\b(plug-core|plug-autoload|plug-old|plug-install|plug-upgrade|plug-execute|plug)\b' 0:keyword
+    add-highlighter shared/kakrc/code/plug-keywords regex '\b(plug-core|plug-autoload|plug-theme|plug-old|plug-install|plug-upgrade|plug-execute|plug)\b' 0:keyword
   }
 
   define-command plug -params 2..3 -docstring 'plug <module> <repository> [config]' %{
@@ -46,6 +47,10 @@ provide-module plug %{
 
   define-command plug-autoload -params 1..2 -docstring 'plug-autoload <module> [config]' %{
     plug %arg{1} '' %arg{2}
+  }
+
+  define-command plug-theme -params 2 -docstring 'plug-autoload <module> <repository>' %{
+    plug "theme-%arg{1}" %arg{2} ''
   }
 
   define-command plug-core -params 0..1 -docstring 'plug-core [config]' %{
@@ -92,14 +97,16 @@ provide-module plug %{
     plug-fifo sh -c %{
       kak_opt_plug_core_path=$1
       kak_opt_plug_autoload_path=$2
-      kak_opt_plug_install_path=$3
-      shift 3
+      kak_opt_plug_theme_path=$3
+      kak_opt_plug_install_path=$4
+      shift 4
       kak_opt_plug_module_to_repository_map=$@
 
       # Clean off the autoload
       echo "plug-install:clean: $kak_opt_plug_autoload_path"
       rm -Rf "$kak_opt_plug_autoload_path"
       mkdir -p "$kak_opt_plug_autoload_path"
+      mkdir -p "$kak_opt_plug_theme_path"
 
       # Core
       echo "plug-install:core: $kak_opt_plug_core_path → $kak_opt_plug_autoload_path/core"
@@ -114,6 +121,7 @@ provide-module plug %{
         fi
 
         # Module variables
+        module_theme_path=$kak_opt_plug_theme_path/$module
         module_autoload_path=$kak_opt_plug_autoload_path/$module
         module_install_path=$kak_opt_plug_install_path/$module
 
@@ -131,12 +139,22 @@ provide-module plug %{
         fi
 
         # Symlink environment
-        echo "plug-install:symlink-environment: $module_install_path → $module_autoload_path"
-        ln -s "$module_install_path" "$module_autoload_path"
+        case $module in
+          # plug-theme <module> <repository> prepends theme- to module
+          theme-*)
+            echo "plug-install:symlink-environment: $module_install_path/colors → $module_theme_path"
+            ln -s "$module_install_path" "$module_theme_path"
+            ;;
+          *)
+            echo "plug-install:symlink-environment: $module_install_path → $module_autoload_path"
+            ln -s "$module_install_path" "$module_autoload_path"
+            ;;
+        esac
       done
     } -- \
       %opt{plug_core_path} \
       %opt{plug_autoload_path} \
+      %opt{plug_theme_path} \
       %opt{plug_install_path} \
       %opt{plug_module_to_repository_map}
   }
